@@ -39,8 +39,19 @@ npx prisma generate
 # 2. 数据库迁移
 PRISMA_SCHEMA_ENGINE_BINARY=$PWD/node_modules/@prisma/engines/schema-engine npx prisma migrate deploy
 
-# 3. 自签证书（域名按实际修改；有正式证书直接放 certs/ 即可）
+# 3. 证书：域名托管在 Cloudflare 时用 acme.sh + DNS-01 申请 Let's Encrypt（内网 IP 也可用，
+#    需要 Zone/DNS/Edit 权限的 API Token）；没有域名 DNS 控制权时退回自签
 mkdir -p certs
+# 方式 A：Let's Encrypt（推荐，自动续期）
+# curl 安装 acme.sh 后：
+# export CF_Token="<Cloudflare API Token>"
+# ~/.acme.sh/acme.sh --issue --dns dns_cf -d wn.example.ltd --server letsencrypt
+# ~/.acme.sh/acme.sh --install-cert -d wn.example.ltd --ecc \
+#   --key-file ~/wrong-notebook/certs/key.pem \
+#   --fullchain-file ~/wrong-notebook/certs/cert.pem \
+#   --reloadcmd "systemctl --user restart wrong-notebook-https"
+# ~/.acme.sh/acme.sh --install-cronjob
+# 方式 B：自签（浏览器首次访问需手动信任）
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
   -keyout certs/key.pem -out certs/cert.pem \
   -subj "/CN=wn.example.ltd" \
@@ -165,4 +176,4 @@ curl -sk https://wn.example.ltd/api/health
 - 日志：`journalctl --user -u wrong-notebook -u wrong-notebook-https -f`
 - 健康检查：`curl -sk https://域名/api/health`，返回 `{"status":"ok",...}`
 - 代理 502 / socket hang up：确认 `https-server.js` 包含「req complete 才销毁」的修复（回归测试 `node --test tests/https-server.test.mjs`）
-- 首次访问证书警告：自签证书正常现象，点「高级 → 继续」，或把 `certs/cert.pem` 导入设备受信任根证书
+- 证书信任：Let's Encrypt 证书无需任何手动操作；自签证书首次访问点「高级 → 继续」，或把 `certs/cert.pem` 导入设备受信任根证书
