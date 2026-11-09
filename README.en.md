@@ -522,6 +522,7 @@ The most common variables are below; see the collapsed table and [`.env.example`
 | `NEXTAUTH_SECRET` | Auth secret | None | Encrypts sessions; required in production. Generate with `openssl rand -base64 32` |
 | `NEXTAUTH_URL` | Public URL | None | The URL users visit, e.g. `http://your-domain:3000` |
 | `AUTH_TRUST_HOST` | Trust host header | `true` in the Docker image | When `true`, the URL is inferred from the request; suits Docker and reverse proxies |
+| `NEXT_DEV_ALLOWED_ORIGINS` | Hosts allowed in dev mode | None | Only affects `next dev`. When the dev server is reached via a LAN IP, Next.js cross-site protection blocks the HMR WebSocket and the page keeps spinning; list the IPs or domains used to access it (comma-separated) |
 | `LOG_LEVEL` | Log level | `debug` in development / `info` in production | `trace`, `debug`, `info`, `warn`, `error` or `fatal`; see [LOGGING_GUIDE.md](doc/LOGGING_GUIDE.md) (Chinese) |
 | `DEBUG_DB` | SQL logs | `false` | When `true`, logs database queries |
 | `HTTP_PROXY` / `HTTPS_PROXY` | Proxy | None | Proxy for requests to AI services |

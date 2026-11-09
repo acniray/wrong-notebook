@@ -21,7 +21,7 @@ EXAMPLE_ADDRESSES = {
         "src/__tests__/unit/rate-limit.test.ts", "src/__tests__/integration/admin-telemetry-route.test.ts",
     },
     ".".join(("172", "30", "108", "211")): {"doc/setup-wsl-network.md"},
-    ".".join(("192", "168", "1", "100")): {"doc/HTTPS_SETUP.md", "doc/setup-wsl-network.md", "docker-compose.https.yml"},
+    ".".join(("192", "168", "1", "100")): {"doc/HTTPS_SETUP.md", "doc/setup-wsl-network.md", "docker-compose.https.yml", ".env.example", "next.config.ts"},
     ".".join(("192", "168", "1", "10")): {
         "README.md", "README.en.md", "doc/INSTALL_PACKAGES.md", "src/__tests__/unit/android-app.test.tsx",
         "src/__tests__/integration/initialize.test.ts", "src/__tests__/integration/admin-telemetry-route.test.ts",
