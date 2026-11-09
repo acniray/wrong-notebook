@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['@prisma/client', 'bcryptjs'],
   // 禁止 next dev 自动向 AGENTS.md / CLAUDE.md 写入 agent-rules 段落
   agentRules: false,
+  // 开发时允许通过环境变量放行局域网访问主机（逗号分隔），否则 HMR WebSocket 会被跨站防护拦截导致页面一直加载
+  // 仅 next dev 生效，生产构建不受影响；例：NEXT_DEV_ALLOWED_ORIGINS=192.168.1.100
+  allowedDevOrigins: process.env.NEXT_DEV_ALLOWED_ORIGINS
+    ? process.env.NEXT_DEV_ALLOWED_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+    : undefined,
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

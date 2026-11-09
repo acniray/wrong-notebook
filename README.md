@@ -489,6 +489,7 @@ GeoGebra 的文字、不等式和标签参数按共用命令清单校验，重�
 | `NEXTAUTH_SECRET` | Auth 密钥 | 无 | 用于加密 Session，生产环境必须设置，可用 `openssl rand -base64 32` 生成 |
 | `NEXTAUTH_URL` | 访问地址 | 无 | 部署后的访问地址，如 `http://your-domain:3000` |
 | `AUTH_TRUST_HOST` | 信任主机头 | Docker 镜像中为 `true` | 为 `true` 时根据请求自动推断访问地址，适合 Docker/反向代理 |
+| `NEXT_DEV_ALLOWED_ORIGINS` | 开发模式放行的访问主机 | 无 | 仅 `next dev` 生效。通过局域网 IP 访问开发服务器时，HMR WebSocket 会被 Next.js 跨站防护拦截导致页面一直加载，把访问用的 IP 或域名填在这里（多个用逗号分隔） |
 | `LOG_LEVEL` | 日志级别 | 开发 `debug` / 生产 `info` | 可选 `trace`、`debug`、`info`、`warn`、`error`、`fatal`，详见 [日志指南](doc/LOGGING_GUIDE.md) |
 | `DEBUG_DB` | SQL 日志 | `false` | 为 `true` 时输出数据库查询日志 |
 | `HTTP_PROXY` / `HTTPS_PROXY` | 代理 | 无 | 访问 AI 服务时使用的代理 |
