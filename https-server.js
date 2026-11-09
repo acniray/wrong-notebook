@@ -80,9 +80,19 @@ const httpsServer = https.createServer(options, (req, res) => {
         }
     });
 
-    // 客户端断开连接时，终止代理请求
+    // 客户端断开连接时，终止代理请求。
+    // Node 16+ 中 IncomingMessage 的 close 在请求体读完时就会触发（并非连接断开），
+    // 必须确认请求未完整接收才销毁，否则 GET 等无体请求的代理转发会被提前掐断（socket hang up）。
     req.on('close', () => {
-        proxyReq.destroy();
+        if (!req.complete) {
+            proxyReq.destroy();
+        }
+    });
+    // 响应结束后清理仍在上传的请求体（如客户端中途取消大文件上传）
+    res.on('close', () => {
+        if (!res.writableEnded) {
+            proxyReq.destroy();
+        }
     });
 
     // 将请求体转发到代理
