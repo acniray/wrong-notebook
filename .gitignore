@@ -86,3 +86,8 @@ __pycache__/
 # 安装包构建产物
 /dist/
 scripts/data/
+
+# 自动部署的构建暂存与状态
+/.next-staging/
+/.next-previous/
+/.deploy-stamp
