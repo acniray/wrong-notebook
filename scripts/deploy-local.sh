@@ -93,8 +93,9 @@ git checkout -- tsconfig.json 2>/dev/null || true
 
 # 5) 布置 standalone：静态资源 + 指回仓库的软链（数据库、配置、证书都在仓库里）
 cp -r public "$staging/standalone/public"
-mkdir -p "$staging/standalone/.next"
-cp -r "$staging/static" "$staging/standalone/.next/static"
+# standalone 内的 distDir 保留构建时的目录名，静态资源必须与 server.js 配置一致。
+mkdir -p "$staging/standalone/$staging"
+cp -r "$staging/static" "$staging/standalone/$staging/static"
 for d in prisma config certs; do
     rm -rf "${staging:?}/standalone/$d"
     ln -sfn "$repo/$d" "$staging/standalone/$d"
@@ -109,7 +110,30 @@ mv "$staging" "$dist"
 restart() { systemctl --user restart "${services[@]}"; }
 health() {
     for _ in $(seq 1 30); do
-        if curl -fsS --max-time 3 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+        if curl -fsS --max-time 3 http://127.0.0.1:3000/api/health >/dev/null 2>&1 && node --input-type=module <<'JS'
+// 除数据库接口外，检查登录页引用的全部脚本和样式，避免资源 404 时仍判定部署成功。
+try {
+    const origin = 'http://127.0.0.1:3000';
+    const page = await fetch(`${origin}/login`, { signal: AbortSignal.timeout(5000) });
+    if (!page.ok) throw new Error(`登录页 ${page.status}`);
+    const html = await page.text();
+    const assets = [...new Set([...html.matchAll(/(?:src|href)="([^" ]+)"/g)]
+        .map((match) => match[1]).filter((url) => url.startsWith('/_next/static/') && /\.(css|js)(\?|$)/.test(url)))];
+    if (!assets.some((url) => url.includes('.css')) || !assets.some((url) => url.includes('.js'))) {
+        throw new Error('登录页缺少样式或脚本引用');
+    }
+    await Promise.all(assets.map(async (url) => {
+        const response = await fetch(`${origin}${url}`, { signal: AbortSignal.timeout(5000) });
+        const type = response.headers.get('content-type') || '';
+        if (!response.ok || !/(css|javascript)/.test(type)) throw new Error(`静态资源异常：${url}`);
+        await response.arrayBuffer();
+    }));
+} catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+}
+JS
+        then
             return 0
         fi
         sleep 1
