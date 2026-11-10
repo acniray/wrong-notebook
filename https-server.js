@@ -37,6 +37,33 @@ console.log(`[HTTPS] 启动 HTTPS 代理，端口 443 -> HTTP ${port}`);
 console.log(`[HTTPS] 代理超时设置: ${PROXY_TIMEOUT / 1000} 秒`);
 
 const httpsServer = https.createServer(options, (req, res) => {
+    // 客户端安装包允许未登录下载，精确匹配路径，避免进入应用的登录保护。
+    if ((req.method === 'GET' || req.method === 'HEAD') && req.url?.split('?')[0] === '/client.apk') {
+        const apkPath = path.join(__dirname, 'public', 'client.apk');
+        fs.stat(apkPath, (error, stat) => {
+            if (error || !stat.isFile()) {
+                res.writeHead(404);
+                res.end();
+                return;
+            }
+            res.writeHead(200, {
+                'Content-Type': 'application/vnd.android.package-archive',
+                'Content-Disposition': 'attachment; filename="client.apk"',
+                'Content-Length': stat.size,
+                'Cache-Control': 'no-cache',
+                'X-Content-Type-Options': 'nosniff',
+            });
+            if (req.method === 'HEAD') {
+                res.end();
+                return;
+            }
+            const file = fs.createReadStream(apkPath);
+            file.on('error', () => res.destroy());
+            res.on('close', () => file.destroy());
+            file.pipe(res);
+        });
+        return;
+    }
     const proxyReq = http.request({
         hostname: '127.0.0.1',
         port: port,
