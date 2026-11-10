@@ -25,6 +25,14 @@ export function aiAccountExtensionPath(value = process.env.AI_ACCOUNT_EXTENSION)
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // 构建输出目录，默认 .next；自动部署脚本用 .next-staging 构建后再原子切换，避免在线服务被覆盖
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+  // 构建时写入版本号与提交号（由构建脚本从 Git 标签/提交推导），部署后无需再手工设置运行时环境变量。
+  // 未提供时不写入，Docker 所以在构建阶段没有 git 信息，仍由镜像的 ENV（APP_VERSION/APP_REVISION）在运行时提供
+  env: {
+    ...(process.env.APP_VERSION ? { APP_VERSION: process.env.APP_VERSION } : {}),
+    ...(process.env.APP_REVISION ? { APP_REVISION: process.env.APP_REVISION } : {}),
+  },
   turbopack: {
     resolveAlias: {
       '@wrong-notebook/ai-account': aiAccountExtensionPath(),
