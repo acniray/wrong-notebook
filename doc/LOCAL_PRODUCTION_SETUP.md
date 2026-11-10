@@ -157,18 +157,70 @@ sudo setcap cap_net_bind_service=+ep /usr/bin/node
 
 ## 更新与重启
 
+### 自动更新（推荐）
+
+`scripts/deploy-local.sh` 完成「main 快进上游 → runtime 合并 → 依赖与迁移 → 构建 → 原子切换 → 重启 → 健康检查」全过程，
+配合 systemd 定时器每天自动检查一次：
+
+```ini
+# ~/.config/systemd/user/wrong-notebook-update.service
+[Unit]
+Description=Wrong Notebook 自动更新（同步上游、构建、部署、重启）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/wrong-notebook
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+ExecStart=%h/wrong-notebook/scripts/deploy-local.sh
+```
+
+```ini
+# ~/.config/systemd/user/wrong-notebook-update.timer
+[Unit]
+Description=每天检查 Wrong Notebook 上游更新
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now wrong-notebook-update.timer
+systemctl --user start wrong-notebook-update.service   # 立即检查一次
+journalctl --user -u wrong-notebook-update -f          # 查看运行日志
+```
+
+行为说明：
+
+- 版本号与提交号在**构建时**由 `git describe` / `git rev-parse` 注入产物（`next.config.ts` 的 `env`），
+  部署后 `/api/health` 与「设置 → 关于」显示真实版本，不需要手工设置运行时环境变量
+- 构建写在 `.next-staging`，成功后与 `.next` 原子切换并重启；**合并冲突、构建失败或健康检查失败都会保留旧版本继续运行**（切换后失败会自动回滚）
+- 依赖锁文件变化时才 `npm ci`，随后自动补齐 Prisma OpenSSL 3.0 引擎
+- 工作区有未提交改动时脚本会拒绝执行，避免把调试代码带上生产
+
+手工控制：
+
+```bash
+scripts/deploy-local.sh              # 有更新才构建
+scripts/deploy-local.sh --force      # 强制重建（如改了 .env 或系统库）
+scripts/deploy-local.sh --no-merge   # 只构建部署，不碰 git
+```
+
+### 手工更新
+
+不使用定时器时，等价操作：
+
 ```bash
 cd ~/wrong-notebook
-git checkout runtime && git merge main
-npm ci --registry=https://registry.npmjs.org   # 依赖有变化时；之后重做 Prisma 引擎替换
-npx prisma generate
-PRISMA_SCHEMA_ENGINE_BINARY=$PWD/node_modules/@prisma/engines/schema-engine npx prisma migrate deploy
-npm run build
-cp -r public .next/standalone/public
-cp -r .next/static .next/standalone/.next/static
-for d in prisma config certs; do rm -rf ".next/standalone/$d"; ln -sfn "$PWD/$d" ".next/standalone/$d"; done
-systemctl --user restart wrong-notebook wrong-notebook-https
-curl -sk https://wn.example.ltd/api/health
+scripts/deploy-local.sh
 ```
 
 ## 排障
