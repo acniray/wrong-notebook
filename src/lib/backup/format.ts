@@ -11,7 +11,7 @@ import { z } from "zod";
  */
 
 /** 当前备份文件版本号 */
-export const BACKUP_VERSION = 15;
+export const BACKUP_VERSION = 17;
 
 /** 备份文件中的用户对象 */
 export interface BackupUser {
@@ -114,6 +114,10 @@ export interface BackupErrorItem {
     hasFigure?: boolean;
     /** 旧版导出文件没有该字段 */
     figureSvg?: string | null;
+    /** 识别时裁剪的原配图（PNG data URI）；第 17 版起导出 */
+    figureImage?: string | null;
+    /** 配图显示来源；旧版备份缺省为 svg */
+    figureSource?: string;
     /** 旧版备份缺省为 100% */
     figureScale?: number;
     /** 旧版备份缺省为居中 */
@@ -164,9 +168,27 @@ export interface BackupPracticeRecord {
     figureSvg?: string | null;
     source?: string;
     examQuestionId?: string | null;
+    /** 独立生成题 ID；第 16 版起导出 */
+    practiceQuestionId?: string | null;
     createdAt: string | Date;
 }
 
+
+/** 备份文件中的智能练习生成题（version 16 起导出） */
+export interface BackupPracticeQuestion {
+    id: string;
+    userId: string;
+    errorItemId: string | null;
+    subject: string | null;
+    difficulty: string | null;
+    source: string;
+    questionText: string;
+    answerText: string;
+    analysis: string;
+    figureSvg: string | null;
+    generatedAt: string | Date;
+    createdAt: string | Date;
+}
 /** 备份文件中的试卷题目 */
 export interface BackupExamQuestion {
     id: string;
@@ -281,6 +303,8 @@ export interface BackupFile {
     errorItems: BackupErrorItem[];
     reviewSchedules: BackupReviewSchedule[];
     practiceRecords: BackupPracticeRecord[];
+    /** 智能练习生成题（version 16 起导出） */
+    practiceQuestions: BackupPracticeQuestion[];
     examPapers: BackupExamPaper[];
     paperGroups: BackupPaperGroup[];
     /** 真题库（version 14 起导出） */
@@ -335,6 +359,12 @@ export type ImportedBackupPracticeRecord = Omit<BackupPracticeRecord, "createdAt
     createdAt: ImportedDate;
 };
 
+/** 导入侧的智能练习生成题 */
+export type ImportedBackupPracticeQuestion = Omit<BackupPracticeQuestion, "generatedAt" | "createdAt"> & {
+    generatedAt: ImportedDate;
+    createdAt: ImportedDate;
+};
+
 /** 导入侧的试卷 */
 export type ImportedBackupExamPaper = Omit<BackupExamPaper, "resultsRecordedAt" | "createdAt" | "updatedAt"> & {
     resultsRecordedAt: ImportedDate | null;
@@ -376,6 +406,7 @@ export interface ImportableBackupFile {
     errorItems: ImportedBackupErrorItem[];
     reviewSchedules?: ImportedBackupReviewSchedule[];
     practiceRecords?: ImportedBackupPracticeRecord[];
+    practiceQuestions?: ImportedBackupPracticeQuestion[];
     examPapers?: ImportedBackupExamPaper[];
     paperGroups?: ImportedBackupPaperGroup[];
     questionBanks?: ImportedBackupQuestionBank[];
