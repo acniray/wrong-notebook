@@ -514,7 +514,8 @@ export const zh = {
         },
         banks: {
             title: "真题库",
-            subtitle: "导入共享题库、管理题目，并在举一反三时按知识点选题",
+            subtitle: "全站共享的真题库：可查看题目、加入自己的错题本，并在举一反三时按知识点选题；题库由管理员导入和管理",
+            adminManagedHint: "题库由管理员导入和管理；其他账号可查看题目、加入自己的错题本，并在举一反三时按知识点选题。",
             import: "导入题库",
             importHint: "选择题库包 JSON 文件，单包最多 {max} 题。",
             chooseFile: "选择题库文件",
@@ -550,7 +551,7 @@ export const zh = {
             licenseLabel: "许可",
             sourceLabel: "来源",
             deleteBank: "删除题库",
-            deleteBankConfirm: "确定删除该题库及全部题目？已写入的错题不受影响。",
+            deleteBankConfirm: "确定删除该题库及全部题目？题库全站共享，删除后所有账号都不再看到它；已写入的错题不受影响。",
             renameBank: "重命名",
             renameDialog: {
                 title: "重命名题库",
