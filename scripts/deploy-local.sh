@@ -51,6 +51,9 @@ if $merge; then
         git merge --abort || true
         die "runtime 合并 main 冲突，旧版本继续运行"
     fi
+    # 同步成功后把 main 与 runtime 推到自己的 fork，fork 是自己代码线的家；
+    # 推送失败不影响部署（网络问题下次再推），日常让 fork 与本地保持一致
+    git push --quiet origin main runtime 2>/dev/null || log "推送 fork 失败，下次部署再同步"
 fi
 
 head=$(git rev-parse HEAD)
