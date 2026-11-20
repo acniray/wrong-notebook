@@ -164,6 +164,22 @@ afterAll(async () => {
 });
 
 describe('数据导出后再导入（真实 SQLite）', () => {
+    it('数据库已降权时，旧的管理员 session 不能执行全量导出或导入', async () => {
+        mocks.session = { user: { id: 'user-1', email: 'backup-test@example.com', role: 'admin' }, expires: '2099-01-01' };
+
+        const exportResponse = await EXPORT(new Request('http://localhost/api/export?all=true'));
+        expect(exportResponse.status).toBe(403);
+        expect(await exportResponse.json()).toMatchObject({ code: 'FORBIDDEN' });
+
+        const importResponse = await IMPORT(new Request('http://localhost/api/import?all=true', {
+            method: 'POST',
+            body: '{}',
+            headers: { 'Content-Type': 'application/json' },
+        }));
+        expect(importResponse.status).toBe(403);
+        expect(await importResponse.json()).toMatchObject({ code: 'FORBIDDEN' });
+    });
+
     it('完整语文课程备份往返保留同名章节的层级及题目关联，兼容乱序与重复导入', async () => {
         await seedChineseTags(database);
         const scope = { subject: 'chinese', isSystem: true, tagSet: 'default' };
@@ -241,6 +257,7 @@ describe('数据导出后再导入（真实 SQLite）', () => {
 
     it('真题库与题目随备份往返，按 ID 去重且不影响错题', async () => {
         mocks.session = { user: { id: 'user-1', email: 'backup-test@example.com', role: 'admin' }, expires: '2099-01-01' };
+        await database.user.update({ where: { id: 'user-1' }, data: { role: 'admin' } });
         await database.questionBank.create({
             data: {
                 id: 'bank-1', name: '小学数学题库', stage: 'primary', subjectKey: 'math',
@@ -291,6 +308,7 @@ describe('数据导出后再导入（真实 SQLite）', () => {
 
     it('真题库导入默认不进错题，可选写入；按知识点从题库选题', async () => {
         mocks.session = { user: { id: 'user-1', email: 'backup-test@example.com', role: 'admin' }, expires: '2099-01-01' };
+        await database.user.update({ where: { id: 'user-1' }, data: { role: 'admin' } });
         const file = {
             format: 'wrong-notebook-question-bank',
             version: 1,
@@ -378,6 +396,7 @@ describe('数据导出后再导入（真实 SQLite）', () => {
             // 普通账号不能导入题库，管理员导入后题库全站可见
             mocks.session = { user: { id: 'user-2', email: 'member@example.com', role: 'user' }, expires: '2099-01-01' };
             expect((await postBank()).status).toBe(403);
+            await database.user.update({ where: { id: 'user-2' }, data: { role: 'admin' } });
             mocks.session = { user: { id: 'user-2', email: 'member@example.com', role: 'admin' }, expires: '2099-01-01' };
             expect((await postBank()).status).toBe(201);
             expect(await database.questionBank.count()).toBe(1);
@@ -409,12 +428,15 @@ describe('数据导出后再导入（真实 SQLite）', () => {
             expect(await database.errorItem.count({ where: { userId: 'user-1', subjectId: 'shared-math' } })).toBe(1);
 
             // 名称查重全站生效；普通账号不能删除题库
+            await database.user.update({ where: { id: 'user-1' }, data: { role: 'admin' } });
             mocks.session = { user: { id: 'user-1', email: 'backup-test@example.com', role: 'admin' }, expires: '2099-01-01' };
             expect((await postBank()).status).toBe(409);
+            await database.user.update({ where: { id: 'user-1' }, data: { role: 'user' } });
             mocks.session = originalSession;
             expect((await DELETE_BANK(new Request('http://localhost/api/question-banks'), {
                 params: Promise.resolve({ id: bankQuestion.bankId }),
             })).status).toBe(403);
+            await database.user.update({ where: { id: 'user-1' }, data: { role: 'admin' } });
             mocks.session = { user: { id: 'user-1', email: 'backup-test@example.com', role: 'admin' }, expires: '2099-01-01' };
             expect((await DELETE_BANK(new Request('http://localhost/api/question-banks'), {
                 params: Promise.resolve({ id: bankQuestion.bankId }),
