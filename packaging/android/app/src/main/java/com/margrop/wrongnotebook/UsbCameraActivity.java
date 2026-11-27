@@ -302,7 +302,8 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
                     resolution.setEnabled(false);
                     updateAspect();
                     armTimeout();
-                    CAMERA_WORKER.execute(() -> owner.startMode(mode));
+                    int revision = ++owner.revision;
+                    CAMERA_WORKER.execute(() -> owner.startMode(mode, revision));
                 })
                 .setNegativeButton(R.string.cancel, null).show();
     }
@@ -311,7 +312,8 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
         Session owner = session;
         if (owner == null || !ready || capturing || output == null) return;
         Stream stream = owner.stream;
-        if (stream == null || stream.mode != selectedMode || !stream.firstFrame.get()) return;
+        if (stream == null || stream.mode != selectedMode || stream.revision != owner.revision
+                || !stream.firstFrame.get()) return;
         capturing = true;
         shutter.setEnabled(false);
         resolution.setEnabled(false);
@@ -331,7 +333,8 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
     }
 
     private void onFirstFrame(Session owner, Stream stream) {
-        if (!active(owner) || owner.stream != stream || selectedMode != stream.mode) return;
+        if (!active(owner) || owner.stream != stream || stream.revision != owner.revision
+                || selectedMode != stream.mode) return;
         ready = true;
         handler.removeCallbacks(timeout);
         updateAspect();
@@ -340,8 +343,8 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
         resolution.setEnabled(true);
     }
 
-    private void onModeFailed(Session owner, Mode mode) {
-        if (!active(owner) || selectedMode != mode) return;
+    private void onModeFailed(Session owner, Mode mode, int revision) {
+        if (!active(owner) || selectedMode != mode || revision != owner.revision) return;
         handler.removeCallbacks(timeout);
         ready = false;
         shutter.setEnabled(false);
@@ -396,10 +399,14 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
 
     private static final class Stream {
         final Mode mode;
+        final int revision;
         final AtomicBoolean firstFrame = new AtomicBoolean();
         final AtomicBoolean captureRequested = new AtomicBoolean();
         final AtomicLong frames = new AtomicLong();
-        Stream(Mode mode) { this.mode = mode; }
+        Stream(Mode mode, int revision) {
+            this.mode = mode;
+            this.revision = revision;
+        }
     }
 
     private static List<Mode> readModes(UVCCamera camera) {
@@ -435,7 +442,8 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
         }
         return modes.stream().min(Comparator
                 .comparingInt((Mode mode) -> mode.format == UVCCamera.FRAME_FORMAT_MJPEG ? 0 : 1)
-                .thenComparingLong(mode -> Math.abs(mode.pixels() - 640L * 480))).orElseThrow();
+                .thenComparingLong(mode -> Math.abs(mode.pixels() - 640L * 480)))
+                .orElseThrow(() -> new IllegalStateException("没有可用的 UVC 视频模式"));
     }
 
     /** 原生接口仅在串行工作线程执行；帧回调不持有原生缓冲区、不调用相机接口。 */
@@ -443,6 +451,7 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
         final UsbDevice device;
         final SurfaceTexture texture;
         volatile boolean closed;
+        volatile int revision;
         volatile Stream stream;
         private USBMonitor monitor;
         private USBMonitor.UsbControlBlock control;
@@ -472,7 +481,7 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
                 Log.i(TAG, "摄像头已打开，支持模式：" + available);
                 handler.post(() -> onModes(this, available, initial));
                 surface = new Surface(texture);
-                startMode(initial);
+                startMode(initial, 0);
             } catch (RuntimeException | LinkageError e) {
                 Log.e(TAG, "打开 AUSBC 摄像头失败", e);
                 handler.post(() -> {
@@ -481,21 +490,30 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
             }
         }
 
-        void startMode(Mode mode) {
-            if (closed || camera == null || surface == null) return;
-            try {
-                // stopPreview 会清除原生预览 Surface 与帧回调，因此切换后必须重新绑定。
-                if (stream != null) {
-                    stream = null;
+        void startMode(Mode mode, int requestRevision) {
+            if (closed || revision != requestRevision || camera == null || surface == null) return;
+            // stopPreview 会清除原生预览 Surface 与帧回调，因此切换后必须重新绑定。
+            // 停止失败时不能继续打开另一个视频流，以免两个原生线程同时使用设备。
+            if (stream != null) {
+                try {
                     camera.stopPreview();
+                    stream = null;
+                } catch (RuntimeException | LinkageError e) {
+                    Log.e(TAG, "停止上一视频流失败", e);
+                    handler.post(() -> {
+                        if (active(this)) fail(R.string.camera_usb_failed);
+                    });
+                    return;
                 }
-                if (closed) return;
+            }
+            try {
+                if (closed || revision != requestRevision) return;
                 if (!surface.isValid()) throw new IllegalStateException("预览 Surface 无效");
                 // 复用实测 Multiplex 的协商范围与带宽配置；不遍历未验证的模式。
                 camera.setPreviewSize(mode.width, mode.height, 1, 61, mode.format, UVCCamera.DEFAULT_BANDWIDTH);
                 texture.setDefaultBufferSize(mode.width, mode.height);
                 camera.setPreviewDisplay(surface);
-                Stream next = new Stream(mode);
+                Stream next = new Stream(mode, requestRevision);
                 stream = next;
                 // 3.6.0 中该常量对应 uvc_yuyv2iyuv420SP，实际输出 VU 交错的 NV21。
                 camera.setFrameCallback(buffer -> onFrame(next, buffer), UVCCamera.PIXEL_FORMAT_YUV420SP);
@@ -504,12 +522,12 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
             } catch (RuntimeException | LinkageError e) {
                 Log.e(TAG, "启动预览失败：" + mode, e);
                 // 保留 stream 标记，下一次切换或关闭会停止可能已启动的原生预览。
-                handler.post(() -> onModeFailed(this, mode));
+                handler.post(() -> onModeFailed(this, mode, requestRevision));
             }
         }
 
         private void onFrame(Stream owner, ByteBuffer buffer) {
-            if (closed || stream != owner || buffer == null) return;
+            if (closed || stream != owner || revision != owner.revision || buffer == null) return;
             Mode mode = owner.mode;
             int pixels = mode.width * mode.height;
             int length = pixels + pixels / 2;
@@ -540,7 +558,7 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
         }
 
         private void savePhoto(Stream owner, byte[] data) {
-            if (closed || stream != owner) return;
+            if (closed || stream != owner || revision != owner.revision) return;
             Mode mode = owner.mode;
             try (FileOutputStream file = new FileOutputStream(output)) {
                 YuvImage image = new YuvImage(data, ImageFormat.NV21, mode.width, mode.height, null);
@@ -561,7 +579,7 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
             }
             Log.i(TAG, "已保存 JPEG：" + mode + " bytes=" + output.length());
             handler.post(() -> {
-                if (!active(this) || stream != owner || !capturing) return;
+                if (!active(this) || stream != owner || revision != owner.revision || !capturing) return;
                 if (!output.isFile() || output.length() == 0) {
                     fail(R.string.camera_usb_failed);
                     return;
