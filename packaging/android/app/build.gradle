@@ -108,5 +108,13 @@ android {
 
 dependencies {
     implementation 'androidx.core:core:1.13.1'
-    implementation 'com.herohan:UVCAndroid:1.0.13'
+    // 仅依赖已通过真机预览对照的 AUSBC 底层模块，不引入 libausbc/libnative。
+    def localUvc = project.findProperty('ausbcLibuvcAar')
+    if (localUvc) {
+        implementation files(localUvc)
+        implementation 'androidx.appcompat:appcompat:1.7.1'
+        implementation 'com.elvishew:xlog:1.11.1'
+    } else {
+        implementation 'com.github.ernestp.AndroidUSBCamera:libuvc:3.6.0'
+    }
 }
