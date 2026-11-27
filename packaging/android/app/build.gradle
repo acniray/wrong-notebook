@@ -108,5 +108,10 @@ android {
 
 dependencies {
     implementation 'androidx.core:core:1.13.1'
-    implementation 'com.herohan:UVCAndroid:1.0.13'
+    implementation('com.herohan:UVCAndroid:1.0.13') {
+        // UVCAndroid 仍引用 Kotlin 1.6 的拆分库；项目已使用 Kotlin 1.8 stdlib，
+        // 其中已包含 jdk7/jdk8 类，排除旧库避免 duplicate class。
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
 }
