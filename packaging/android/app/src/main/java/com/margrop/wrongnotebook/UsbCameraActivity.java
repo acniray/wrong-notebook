@@ -436,13 +436,21 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
         return result;
     }
 
-    private static Mode initialMode(List<Mode> modes) {
+    private static final String MODE_PREFS = "usb_camera_modes";
+
+    private Mode initialMode(UsbDevice device, List<Mode> modes) {
+        String saved = getSharedPreferences(MODE_PREFS, MODE_PRIVATE)
+                .getString(UsbCameraDevices.key(device), "");
         for (Mode mode : modes) {
-            if (mode.width == 640 && mode.height == 480 && mode.format == UVCCamera.FRAME_FORMAT_MJPEG) return mode;
+            if (mode.toString().equals(saved)) return mode;
         }
+        // 试卷扫描默认约 800 万像素 MJPEG；只有 YUYV 时优先低带宽模式。
+        // 对其他摄像头使用实际报告的分辨率，而非强制请求固定尺寸。
         return modes.stream().min(Comparator
                 .comparingInt((Mode mode) -> mode.format == UVCCamera.FRAME_FORMAT_MJPEG ? 0 : 1)
-                .thenComparingLong(mode -> Math.abs(mode.pixels() - 640L * 480)))
+                .thenComparingLong(mode -> Math.abs(mode.pixels()
+                        - (mode.format == UVCCamera.FRAME_FORMAT_MJPEG ? 8_000_000L : 640L * 480)))
+                .thenComparingLong(Mode::pixels))
                 .orElseThrow(() -> new IllegalStateException("没有可用的 UVC 视频模式"));
     }
 
@@ -477,7 +485,7 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
                 if (closed) return;
                 List<Mode> available = readModes(camera);
                 if (available.isEmpty()) throw new IllegalStateException("没有可用的 UVC 视频模式");
-                Mode initial = initialMode(available);
+                Mode initial = initialMode(device, available);
                 Log.i(TAG, "摄像头已打开，支持模式：" + available);
                 handler.post(() -> onModes(this, available, initial));
                 surface = new Surface(texture);
@@ -584,6 +592,9 @@ public class UsbCameraActivity extends Activity implements TextureView.SurfaceTe
                     fail(R.string.camera_usb_failed);
                     return;
                 }
+                // 只记住成功写入 JPEG 的模式，按 VID/PID 区分摄像头型号。
+                getSharedPreferences(MODE_PREFS, MODE_PRIVATE).edit()
+                        .putString(UsbCameraDevices.key(device), mode.toString()).apply();
                 completed = true;
                 handler.removeCallbacks(timeout);
                 setResult(RESULT_OK);
