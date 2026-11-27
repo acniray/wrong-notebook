@@ -1,11 +1,14 @@
 package com.margrop.wrongnotebook;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.hardware.usb.UsbDevice;
 import android.database.Cursor;
 import android.net.Uri;
 import android.net.http.SslError;
@@ -58,6 +61,7 @@ import java.util.concurrent.Executors;
 public class MainActivity extends Activity {
     private static final int REQUEST_FILE_CHOOSER = 1;
     private static final int REQUEST_SAVE_FILE = 2;
+    private static final int REQUEST_CAMERA_PERMISSION = 3;
     private static final String BRIDGE_NAME = "WrongNotebookAndroid";
     private static final String KEY_SAVE_NAME = "pendingSaveName";
     private static final String KEY_SAVE_MIME = "pendingSaveMime";
@@ -81,6 +85,7 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileCallback;
     private File cameraFile;
     private Uri cameraUri;
+    private String pendingUsbDeviceName;
     /** 原生「另存为」待写入的临时文件；文件保存在应用目录，对话框期间进程被回收也不丢 */
     private File pendingSaveFile;
     private String pendingSaveName;
@@ -454,9 +459,9 @@ public class MainActivity extends Activity {
 
     // ---------- 选择图片 / 拍照上传 ----------
 
-    private Intent createCameraIntent() {
+    private boolean prepareCameraOutput() {
         File dir = new File(getCacheDir(), "camera");
-        if (!dir.isDirectory() && !dir.mkdirs()) return null;
+        if (!dir.isDirectory() && !dir.mkdirs()) return false;
         File[] old = dir.listFiles();
         if (old != null) {
             for (File file : old) //noinspection ResultOfMethodCallIgnored
@@ -464,6 +469,10 @@ public class MainActivity extends Activity {
         }
         cameraFile = new File(dir, "photo-" + System.currentTimeMillis() + ".jpg");
         cameraUri = FileProvider.getUriForFile(this, getPackageName() + ".files", cameraFile);
+        return true;
+    }
+
+    private Intent createCameraIntent() {
         Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         intent.putExtra(MediaStore.EXTRA_OUTPUT, cameraUri);
         intent.setClipData(ClipData.newRawUri("", cameraUri));
@@ -503,9 +512,87 @@ public class MainActivity extends Activity {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
+    /** 检测连接的 UVC 设备；没有外置设备时保留直接打开系统相机的行为。 */
+    private void chooseCamera() {
+        List<UsbDevice> devices = UsbCameraDevices.list(this);
+        if (devices.isEmpty()) {
+            requestCamera(null);
+            return;
+        }
+        String[] labels = new String[devices.size() + 1];
+        labels[0] = getString(R.string.camera_builtin);
+        String remembered = getPreferences(MODE_PRIVATE).getString("camera_source", "");
+        int[] choice = {0};
+        for (int i = 0; i < devices.size(); i++) {
+            UsbDevice device = devices.get(i);
+            labels[i + 1] = getString(R.string.camera_usb_device, UsbCameraDevices.label(device));
+            if (UsbCameraDevices.key(device).equals(remembered)) choice[0] = i + 1;
+        }
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.camera_choose)
+                .setSingleChoiceItems(labels, choice[0], (d, which) -> choice[0] = which)
+                .setPositiveButton(R.string.camera_open, (d, which) -> {
+                    UsbDevice selected = choice[0] == 0 ? null : devices.get(choice[0] - 1);
+                    getPreferences(MODE_PRIVATE).edit().putString("camera_source",
+                            selected == null ? "" : UsbCameraDevices.key(selected)).apply();
+                    requestCamera(selected == null ? null : selected.getDeviceName());
+                })
+                .setNegativeButton(R.string.cancel, (d, which) -> dismissCameraChooser())
+                .setOnCancelListener(d -> dismissCameraChooser())
+                .create();
+        dialog.show();
+    }
+
+    private void dismissCameraChooser() {
+        if (fileCallback != null) fileCallback.onReceiveValue(null);
+        fileCallback = null;
+    }
+
+    private void requestCamera(String usbDeviceName) {
+        pendingUsbDeviceName = usbDeviceName;
+        // Android 9+ 申请视频类 USB 设备权限需要 CAMERA；声明该权限后系统拍照 Intent 也需要授权。
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+        } else {
+            launchCamera();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_CAMERA_PERMISSION || fileCallback == null) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            launchCamera();
+        } else {
+            pendingUsbDeviceName = null;
+            cancelChooser(R.string.camera_permission_denied);
+        }
+    }
+
+    private void launchCamera() {
+        String deviceName = pendingUsbDeviceName;
+        pendingUsbDeviceName = null;
+        if (!prepareCameraOutput()) {
+            cancelChooser(R.string.camera_unavailable);
+            return;
+        }
+        Intent camera = deviceName == null ? createCameraIntent()
+                : new Intent(this, UsbCameraActivity.class)
+                        .putExtra(UsbCameraActivity.EXTRA_DEVICE_NAME, deviceName)
+                        .putExtra(UsbCameraActivity.EXTRA_OUTPUT_PATH, cameraFile.getAbsolutePath());
+        try {
+            startActivityForResult(camera, REQUEST_FILE_CHOOSER);
+        } catch (ActivityNotFoundException | SecurityException e) {
+            cameraFile = null;
+            cameraUri = null;
+            cancelChooser(R.string.camera_unavailable);
+        }
+    }
+
     /**
      * 网页的拍照、相册、从文件选择三个入口分别打开相机、照片选择器和文件选择器。
-     * 拍照只调用系统相机应用（ACTION_IMAGE_CAPTURE），不需要相机权限；相机不可用时提示改用相册或文件。
+     * 拍照支持系统相机及 USB UVC 相机，均返回原有文件选择回调。
      */
     private boolean openFileChooser(ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
         if (fileCallback != null) fileCallback.onReceiveValue(null);
@@ -518,18 +605,7 @@ public class MainActivity extends Activity {
         FileChooserMode.Mode mode = FileChooserMode.resolve(acceptTypes, params.isCaptureEnabled());
 
         if (mode == FileChooserMode.Mode.CAMERA) {
-            Intent camera = createCameraIntent();
-            if (camera == null) {
-                cancelChooser(R.string.camera_unavailable);
-                return true;
-            }
-            try {
-                startActivityForResult(camera, REQUEST_FILE_CHOOSER);
-            } catch (ActivityNotFoundException | SecurityException e) {
-                cameraFile = null;
-                cameraUri = null;
-                cancelChooser(R.string.camera_unavailable);
-            }
+            chooseCamera();
             return true;
         }
 

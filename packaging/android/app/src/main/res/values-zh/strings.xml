@@ -27,4 +27,18 @@
     <string name="error_local_title">错题本启动失败</string>
     <string name="starting_unpack">首次启动或升级后正在准备，请稍候…</string>
     <string name="starting_server">正在启动错题本…</string>
+    <string name="camera_builtin">内置摄像头</string>
+    <string name="camera_usb_device">USB 外置摄像头：%1$s</string>
+    <string name="camera_choose">选择摄像头</string>
+    <string name="camera_open">打开</string>
+    <string name="camera_permission_denied">未授予相机或 USB 权限，请授权后重试。</string>
+    <string name="camera_usb_connecting">正在连接 USB 摄像头…</string>
+    <string name="camera_usb_ready">USB 摄像头 · %1$d × %2$d</string>
+    <string name="camera_usb_timeout">未收到摄像头画面，请重新连接或尝试其他分辨率。</string>
+    <string name="camera_usb_disconnected">USB 摄像头已断开，请重新连接后拍照。</string>
+    <string name="camera_usb_failed">USB 摄像头操作失败，请重新连接设备后重试。</string>
+    <string name="camera_usb_capturing">正在拍照…</string>
+    <string name="camera_resolution">分辨率</string>
+    <string name="camera_resolution_option">%1$d × %2$d · %3$d fps · UVC %4$d</string>
+    <string name="camera_take_photo">拍照</string>
 </resources>

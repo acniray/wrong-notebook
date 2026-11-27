@@ -27,4 +27,18 @@
     <string name="error_local_title">Wrong Notebook failed to start</string>
     <string name="starting_unpack">Preparing for first launch or update…</string>
     <string name="starting_server">Starting Wrong Notebook…</string>
+    <string name="camera_builtin">Built-in camera</string>
+    <string name="camera_usb_device">USB camera: %1$s</string>
+    <string name="camera_choose">Select camera</string>
+    <string name="camera_open">Open</string>
+    <string name="camera_permission_denied">Camera or USB permission denied. Grant permission and try again.</string>
+    <string name="camera_usb_connecting">Connecting to USB camera…</string>
+    <string name="camera_usb_ready">USB camera · %1$d × %2$d</string>
+    <string name="camera_usb_timeout">No camera frame received. Reconnect the camera or try another resolution.</string>
+    <string name="camera_usb_disconnected">USB camera disconnected. Reconnect it and take a photo again.</string>
+    <string name="camera_usb_failed">USB camera operation failed. Reconnect the device and try again.</string>
+    <string name="camera_usb_capturing">Taking photo…</string>
+    <string name="camera_resolution">Resolution</string>
+    <string name="camera_resolution_option">%1$d × %2$d · %3$d fps · UVC %4$d</string>
+    <string name="camera_take_photo">Take photo</string>
 </resources>
